@@ -2,6 +2,14 @@ package main
 
 import "fmt"
 
+func swap(a, b *int) {
+	*a, *b = *b, *a
+}
+
+func updateSlice(s *[]string, newItem string) {
+	*s = append(*s, newItem)
+}
+
 func main() {
 	fmt.Println("=== SOAL 2: VARIABEL & MAP ===")
 	var nama string = "Nadine Nazwa Andina"
@@ -19,4 +27,13 @@ func main() {
 	for nama, nilai := range nilaiMhs {
 		fmt.Printf("- %s : %.2f\n", nama, nilai)
 	}
+	fmt.Println("\n=== SOAL 3: POINTER ===")
+	x, y := 10, 50
+	fmt.Printf("Sebelum Swap: x=%d, y=%d\n", x, y)
+	swap(&x, &y)
+	fmt.Printf("Setelah Swap: x=%d, y=%d\n", x, y)
+
+	daftarMhs := []string{"Nadine", "Adam"}
+	updateSlice(&daftarMhs, "Lusiana")
+	fmt.Println("Slice Hasil Update:", daftarMhs)
 }
