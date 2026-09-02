@@ -10,6 +10,17 @@ func updateSlice(s *[]string, newItem string) {
 	*s = append(*s, newItem)
 }
 
+type Student struct {
+	ID       int
+	Name     string
+	Grade    float64
+	IsActive bool
+}
+
+func (s *Student) Activate() {
+	s.IsActive = true
+}
+
 func main() {
 	fmt.Println("=== SOAL 2: VARIABEL & MAP ===")
 	var nama string = "Nadine Nazwa Andina"
@@ -36,4 +47,9 @@ func main() {
 	daftarMhs := []string{"Nadine", "Adam"}
 	updateSlice(&daftarMhs, "Lusiana")
 	fmt.Println("Slice Hasil Update:", daftarMhs)
-}
+	
+	fmt.Println("\n=== SOAL 4: STRUCT STUDENT ===")
+	mhs1 := Student{ID: 101, Name: "Nadine Nazwa", Grade: 88.5, IsActive: false}
+	mhs1.Activate()
+	fmt.Printf("ID: %d | Nama: %s | Nilai: %.2f | Aktif: %v\n", mhs1.ID, mhs1.Name, mhs1.Grade, mhs1.IsActive)
+	}
