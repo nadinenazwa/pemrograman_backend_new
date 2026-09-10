@@ -23,7 +23,6 @@ func Register(app *fiber.App, logger *slog.Logger) {
 }
 
 // RequestLogger mencatat SETIAP request (apa pun hasilnya) sebagai satu
-// baris JSON — ini yang dipakai untuk memenuhi tugas bagian C.3.
 func RequestLogger(logger *slog.Logger) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		start := time.Now()

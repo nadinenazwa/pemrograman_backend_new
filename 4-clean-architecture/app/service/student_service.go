@@ -66,7 +66,6 @@ func (s *StudentService) Create(c *fiber.Ctx) error {
 		return helper.FailValidation(c, "Validasi isi permintaan gagal", errs)
 	}
 
-	// Keunikan NIM tetap dijaga UNIQUE INDEX di database, bukan SELECT manual.
 	baru, err := s.repo.Create(ctx, model.Student{
 		NIM: req.NIM, Name: req.Name, Grade: *req.Grade, IsActive: *req.IsActive,
 	})
