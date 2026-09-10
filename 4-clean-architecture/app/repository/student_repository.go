@@ -23,6 +23,7 @@ type StudentRepository interface {
 	Create(ctx context.Context, s model.Student) (model.Student, error)
 	Update(ctx context.Context, s model.Student) (model.Student, error)
 	Delete(ctx context.Context, id int) error
+	FindByNIM(ctx context.Context, nim string) (model.Student, error)
 }
 
 // Daftar putih kolom yang boleh dipakai di ORDER BY.
@@ -177,4 +178,20 @@ func isUniqueViolation(err error) bool {
 		return pgErr.Code == "23505"
 	}
 	return false
+}
+
+func (r *studentPostgresRepository) FindByNIM(
+	ctx context.Context, nim string,
+) (model.Student, error) {
+	var s model.Student
+	err := r.pool.QueryRow(ctx,
+		`SELECT id, nim, name, grade, is_active FROM students WHERE nim = $1`, nim,
+	).Scan(&s.ID, &s.NIM, &s.Name, &s.Grade, &s.IsActive)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return model.Student{}, ErrNotFound
+		}
+		return model.Student{}, fmt.Errorf("mengambil student by nim: %w", err)
+	}
+	return s, nil
 }
