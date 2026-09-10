@@ -11,11 +11,15 @@ import (
 	"api-students-db/route"
 )
 
-func NewApp(logger *slog.Logger, pool *pgxpool.Pool, studentService *service.StudentService) *fiber.App {
+func NewApp(
+	logger *slog.Logger, pool *pgxpool.Pool,
+	studentService *service.StudentService,
+	achievementService *service.AchievementService,
+) *fiber.App {
 	app := fiber.New()
 
 	middleware.Register(app, logger)
-	route.Register(app, pool, studentService)
+	route.Register(app, pool, studentService, achievementService)
 
 	return app
 }

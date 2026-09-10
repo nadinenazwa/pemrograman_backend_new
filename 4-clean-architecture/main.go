@@ -30,11 +30,13 @@ func main() {
 
 	// 3. Perakitan dari dalam ke luar: repository -> service
 	studentRepo := repository.NewStudentRepository(pool)
+	achievementRepo := repository.NewAchievementRepository(pool) 
 	studentService := service.NewStudentService(studentRepo)
+	achievementService := service.NewAchievementService(studentRepo, achievementRepo) 
 
 	// 4. Aplikasi Fiber
-	app := config.NewApp(logger, pool, studentService)
-	
+	app := config.NewApp(logger, pool, studentService, achievementService)
+
 	// Membaca port dari .env, jika tidak ada gunakan default "3000"
 	port := config.GetEnv("APP_PORT", "3000")
 

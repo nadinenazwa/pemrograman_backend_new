@@ -12,7 +12,7 @@ import (
 	"api-students-db/middleware"
 )
 
-func Register(app *fiber.App, pool *pgxpool.Pool, studentService *service.StudentService) {
+func Register(app *fiber.App, pool *pgxpool.Pool, studentService *service.StudentService, achievementService *service.AchievementService) {
 	v1 := app.Group("/api/v1")
 
 	v1.Get("/health", healthCheck(pool))
@@ -24,6 +24,7 @@ func Register(app *fiber.App, pool *pgxpool.Pool, studentService *service.Studen
 	students.Put("/:id", studentService.Replace)
 	students.Patch("/:id", studentService.Patch)
 	students.Delete("/:id", studentService.Delete)
+	students.Get("/:nim/achievements", achievementService.ListByStudentNIM)
 }
 
 func healthCheck(pool *pgxpool.Pool) fiber.Handler {
