@@ -17,6 +17,7 @@ type AuthService struct {
 	userRepo    repository.UserRepository
 	refreshRepo repository.RefreshTokenRepository
 	jwt         *helper.JWTManager
+	perms       *helper.PermissionSet
 }
 
 // NewAuthService membuat instance AuthService baru.
@@ -24,11 +25,13 @@ func NewAuthService(
 	userRepo repository.UserRepository,
 	refreshRepo repository.RefreshTokenRepository,
 	jwtManager *helper.JWTManager,
+	perms *helper.PermissionSet,
 ) *AuthService {
 	return &AuthService{
 		userRepo:    userRepo,
 		refreshRepo: refreshRepo,
 		jwt:         jwtManager,
+		perms:       perms,
 	}
 }
 
@@ -191,7 +194,7 @@ func (s *AuthService) Logout(c *fiber.Ctx) error {
 	return helper.Success(c, fiber.StatusOK, "Logout berhasil", nil)
 }
 
-// Me mengembalikan informasi user yang sedang terautentikasi.
+// Me mengembalikan informasi user yang sedang terautentikasi beserta permissions.
 func (s *AuthService) Me(c *fiber.Ctx) error {
 	ctx, cancel := helper.ReqCtx(c)
 	defer cancel()
@@ -206,7 +209,17 @@ func (s *AuthService) Me(c *fiber.Ctx) error {
 		return helper.Fail(c, fiber.StatusNotFound, "User tidak ditemukan")
 	}
 
-	return helper.Success(c, fiber.StatusOK, "Data user berhasil diambil", user)
+	// Permissions untuk membantu frontend mengetahui tombol yang relevan.
+	// BUKAN sebagai security check — security tetap di backend middleware/service.
+	userPerms := s.perms.PermissionsFor(user.Role)
+	if userPerms == nil {
+		userPerms = []string{}
+	}
+
+	return helper.Success(c, fiber.StatusOK, "Data user berhasil diambil", fiber.Map{
+		"user":        user,
+		"permissions": userPerms,
+	})
 }
 
 // generateTokenPair membuat access token dan refresh token, menyimpan hash refresh token ke DB.
