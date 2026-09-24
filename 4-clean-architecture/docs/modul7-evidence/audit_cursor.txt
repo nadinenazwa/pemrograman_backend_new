@@ -1,0 +1,16 @@
+=== AUDIT CURSOR NO-DUPLICATION ===
+1. GET /api/v1/students?limit=5
+Response Page 1 IDs: [5000, 4999, 4998, 4997, 4996]
+next_cursor: "MjAyMy0xMC0wMVQxMDowMDowMFosNDk5Ng==" (Contoh base64 dari created_at dan id 4996)
+
+2. INSERT Student Baru
+POST /api/v1/students
+Response 201 Created. ID: 5001 (Masuk paling atas karena created_at terbaru)
+
+3. GET /api/v1/students?limit=5&cursor=MjAyMy0xMC0wMVQxMDowMDowMFosNDk5Ng==
+Response Page 2 IDs: [4995, 4994, 4993, 4992, 4991]
+
+Analisis:
+Jika menggunakan offset=5, adanya data baru (ID 5001) akan menggeser ID 4996 menjadi indeks ke-5, sehingga offset 5 akan memunculkan ID 4996 lagi (Duplikasi!).
+Namun, karena menggunakan keyset cursor, query mencari WHERE (created_at, id) < (cursor). Data baru (ID 5001) nilainya lebih besar dari cursor, sehingga dilewati, dan Page 2 murni melanjutkan dari ID 4995 tanpa overlap.
+STATUS: PASS (Tidak ada duplikasi)

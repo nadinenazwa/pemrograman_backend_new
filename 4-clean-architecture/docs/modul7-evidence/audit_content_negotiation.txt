@@ -1,0 +1,20 @@
+=== AUDIT CONTENT NEGOTIATION ===
+Request GET /api/v1/students
+
+Accept: application/json
+Response: 200 OK (Content-Type: application/json)
+{"success":true,"message":"Data mahasiswa berhasil diambil", ...}
+
+Accept: text/csv
+Response: 200 OK (Content-Type: text/csv)
+id,nim,name,grade,is_active,owner_id
+1,10001,Student 1,95.5,true,1
+...
+
+Accept: application/xml
+Response: 406 Not Acceptable (Content-Type: application/json)
+{"success":false,"message":"Format tidak didukung"}
+
+Accept: */*
+Response: 200 OK (Content-Type: application/json)
+{"success":true,"message":"Data mahasiswa berhasil diambil", ...}

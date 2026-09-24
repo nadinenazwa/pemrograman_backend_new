@@ -1,0 +1,15 @@
+=== AUDIT PATCH ===
+Request PATCH /api/v1/students/1
+
+Body: {}
+Response: 400 Bad Request
+{"success":false,"message":"Tidak ada data yang diupdate"}
+
+Body: {"name":""}
+Response: 422 Unprocessable Entity
+{"success":false,"message":"Validasi gagal","errors":{"name":"name is a required field"}}
+
+Body: {"name":"Updated Name"}
+Response: 200 OK
+{"success":true,"message":"Data mahasiswa berhasil diupdate","data":{"id":1,"nim":"10001","name":"Updated Name","grade":95.5,"is_active":true,"owner_id":1}}
+(Field nim, grade, dan is_active tidak berubah karena tidak dikirim dalam JSON berkat implementasi omitnil dan tipe pointer)
