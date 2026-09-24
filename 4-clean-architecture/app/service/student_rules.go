@@ -2,7 +2,8 @@ package service
 
 import "api-students-db/app/model"
 
-// 1. Validasi untuk POST (Semua wajib diisi)
+// ValidateCreate memvalidasi CreateStudentRequest menggunakan validation tags.
+// Dipertahankan sebagai wrapper untuk kompatibilitas test yang sudah ada.
 func ValidateCreate(req model.CreateStudentRequest) map[string]string {
 	errs := map[string]string{}
 	if len(req.NIM) == 0 {
@@ -22,7 +23,7 @@ func ValidateCreate(req model.CreateStudentRequest) map[string]string {
 	return errs
 }
 
-// 2. Validasi untuk PUT (Seluruh isi diganti, wajib ada)
+// ValidateReplace memvalidasi PUT request (seluruh field wajib).
 func ValidateReplace(req model.CreateStudentRequest) map[string]string {
 	errs := map[string]string{}
 	if len(req.NIM) == 0 {
@@ -40,7 +41,7 @@ func ValidateReplace(req model.CreateStudentRequest) map[string]string {
 	return errs
 }
 
-// ValidatePatch mengecek rentang grade SEBELUM data lama diambil dari
+// ValidatePatch mengecek rentang grade SEBELUM data lama diambil dari DB.
 func ValidatePatch(req model.UpdateStudentRequest) map[string]string {
 	errs := map[string]string{}
 	if req.Grade != nil && (*req.Grade < 0 || *req.Grade > 100) {
@@ -49,7 +50,7 @@ func ValidatePatch(req model.UpdateStudentRequest) map[string]string {
 	return errs
 }
 
-// 3. Penerapan perubahan untuk PATCH (Mengubah sebagian)
+// ApplyPatch menerapkan perubahan PATCH ke data existing.
 func ApplyPatch(current model.Student, req model.UpdateStudentRequest) model.Student {
 	if req.NIM != nil {
 		current.NIM = *req.NIM

@@ -15,26 +15,27 @@ type User struct {
 
 // RegisterRequest adalah request body untuk registrasi.
 // Tidak memiliki field Role untuk mencegah mass assignment.
+// Menggunakan declarative validation tags.
 type RegisterRequest struct {
-	Username string `json:"username"`
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Username string `json:"username" validate:"required,username,max=30,nospace"`
+	Email    string `json:"email" validate:"required,email,max=120"`
+	Password string `json:"password" validate:"required,strongpassword,max=72"`
 }
 
 // LoginRequest adalah request body untuk login.
 type LoginRequest struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
+	Username string `json:"username" validate:"required"`
+	Password string `json:"password" validate:"required"`
 }
 
 // RefreshRequest adalah request body untuk refresh token.
 type RefreshRequest struct {
-	RefreshToken string `json:"refresh_token"`
+	RefreshToken string `json:"refresh_token" validate:"required"`
 }
 
 // LogoutRequest adalah request body untuk logout.
 type LogoutRequest struct {
-	RefreshToken string `json:"refresh_token"`
+	RefreshToken string `json:"refresh_token" validate:"required"`
 }
 
 // TokenPair berisi access token dan refresh token.
