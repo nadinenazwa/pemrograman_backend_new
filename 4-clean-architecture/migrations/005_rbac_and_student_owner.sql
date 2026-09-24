@@ -1,16 +1,3 @@
--- =============================================================================
--- Migration 005: RBAC tables + owner_id on students
--- =============================================================================
--- Modul 6: Authorization & Role Based Access Control
---
--- Strategi backfill owner_id:
---   - Jika ada students dengan owner_id NULL tetapi tidak ada users → RAISE EXCEPTION
---   - Jika ada students dengan owner_id NULL dan ada users → backfill ke user pertama
---   - Jika tidak ada students → tambahkan kolom NOT NULL langsung
---
--- Migration ini idempotent: menggunakan IF NOT EXISTS dan ON CONFLICT DO NOTHING.
--- =============================================================================
-
 -- === Step 1: Tabel roles ===
 CREATE TABLE IF NOT EXISTS roles (
     name VARCHAR(50) PRIMARY KEY
