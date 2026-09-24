@@ -40,17 +40,19 @@ func Register(
 	auth.Get("/me", authRequired, authService.Me)
 
 	// === Seluruh endpoint students membutuhkan login ===
-	students := v1.Group("/students", middleware.RequireJSON, authRequired)
+	students := v1.Group("/students", authRequired)
 
-	// Permission-based: middleware menangani otorisasi
+	// GET /students — tanpa RequireJSON karena mendukung content negotiation (JSON/CSV)
 	students.Get("/", middleware.RequirePermission(perms, "student:list"), studentService.List)
-	students.Post("/", middleware.RequirePermission(perms, "student:create"), studentService.Create)
+
+	// POST/PUT/PATCH/DELETE membutuhkan RequireJSON
+	students.Post("/", middleware.RequireJSON, middleware.RequirePermission(perms, "student:create"), studentService.Create)
 	students.Delete("/:id", middleware.RequirePermission(perms, "student:delete"), studentService.Delete)
 
 	// Ownership-based: service menangani otorisasi via CanAccessStudent
 	students.Get("/:id", studentService.Get)
-	students.Put("/:id", studentService.Replace)
-	students.Patch("/:id", studentService.Patch)
+	students.Put("/:id", middleware.RequireJSON, studentService.Replace)
+	students.Patch("/:id", middleware.RequireJSON, studentService.Patch)
 
 	// Achievements (tidak ada perubahan RBAC)
 	students.Get("/:nim/achievements", achievementService.ListByStudentNIM)
