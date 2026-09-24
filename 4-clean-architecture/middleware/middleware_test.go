@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"api-students-db/app/model"
 	"api-students-db/helper"
 	"github.com/gofiber/fiber/v2"
 )
@@ -69,3 +70,108 @@ func TestLoginRateLimiter_OnlyCountsFailed(t *testing.T) {
 		t.Fatalf("Expected 401, got %d. Limiter triggered but shouldn't have!", res6.StatusCode)
 	}
 }
+
+// === RequirePermission Tests ===
+
+func buildTestPermsMiddleware() *helper.PermissionSet {
+	return helper.NewPermissionSet(map[string][]string{
+		"admin": {"student:list", "student:read:any", "student:create", "student:update:any", "student:delete"},
+		"staff": {"student:list", "student:read:any", "student:create"},
+		"user":  {},
+	})
+}
+
+func TestRequirePermission_NoAuth_Returns401(t *testing.T) {
+	perms := buildTestPermsMiddleware()
+	app := fiber.New()
+
+	// Tidak ada RequireAuth sebelumnya → auth_user tidak ada di Locals
+	app.Get("/test", RequirePermission(perms, "student:list"), func(c *fiber.Ctx) error {
+		return helper.Success(c, fiber.StatusOK, "OK", nil)
+	})
+
+	req := httptest.NewRequest("GET", "/test", nil)
+	resp, _ := app.Test(req)
+	if resp.StatusCode != fiber.StatusUnauthorized {
+		t.Errorf("Expected 401, got %d", resp.StatusCode)
+	}
+}
+
+func TestRequirePermission_WithPermission_Returns200(t *testing.T) {
+	perms := buildTestPermsMiddleware()
+	app := fiber.New()
+
+	// Simulasi RequireAuth: set auth_user di Locals
+	app.Use(func(c *fiber.Ctx) error {
+		c.Locals("auth_user", model.AuthUser{ID: 1, Username: "admin1", Role: "admin"})
+		return c.Next()
+	})
+	app.Get("/test", RequirePermission(perms, "student:list"), func(c *fiber.Ctx) error {
+		return helper.Success(c, fiber.StatusOK, "OK", nil)
+	})
+
+	req := httptest.NewRequest("GET", "/test", nil)
+	resp, _ := app.Test(req)
+	if resp.StatusCode != fiber.StatusOK {
+		t.Errorf("Expected 200, got %d", resp.StatusCode)
+	}
+}
+
+func TestRequirePermission_WithoutPermission_Returns403(t *testing.T) {
+	perms := buildTestPermsMiddleware()
+	app := fiber.New()
+
+	// User role tidak memiliki student:list
+	app.Use(func(c *fiber.Ctx) error {
+		c.Locals("auth_user", model.AuthUser{ID: 3, Username: "user1", Role: "user"})
+		return c.Next()
+	})
+	app.Get("/test", RequirePermission(perms, "student:list"), func(c *fiber.Ctx) error {
+		return helper.Success(c, fiber.StatusOK, "OK", nil)
+	})
+
+	req := httptest.NewRequest("GET", "/test", nil)
+	resp, _ := app.Test(req)
+	if resp.StatusCode != fiber.StatusForbidden {
+		t.Errorf("Expected 403, got %d", resp.StatusCode)
+	}
+}
+
+func TestRequirePermission_UnknownRole_Returns403(t *testing.T) {
+	perms := buildTestPermsMiddleware()
+	app := fiber.New()
+
+	app.Use(func(c *fiber.Ctx) error {
+		c.Locals("auth_user", model.AuthUser{ID: 99, Username: "hacker", Role: "superadmin"})
+		return c.Next()
+	})
+	app.Get("/test", RequirePermission(perms, "student:list"), func(c *fiber.Ctx) error {
+		return helper.Success(c, fiber.StatusOK, "OK", nil)
+	})
+
+	req := httptest.NewRequest("GET", "/test", nil)
+	resp, _ := app.Test(req)
+	if resp.StatusCode != fiber.StatusForbidden {
+		t.Errorf("Expected 403 for unknown role, got %d", resp.StatusCode)
+	}
+}
+
+func TestRequirePermission_StaffLacksDelete_Returns403(t *testing.T) {
+	perms := buildTestPermsMiddleware()
+	app := fiber.New()
+
+	app.Use(func(c *fiber.Ctx) error {
+		c.Locals("auth_user", model.AuthUser{ID: 2, Username: "staf", Role: "staff"})
+		return c.Next()
+	})
+	app.Delete("/test", RequirePermission(perms, "student:delete"), func(c *fiber.Ctx) error {
+		return helper.Success(c, fiber.StatusOK, "OK", nil)
+	})
+
+	req := httptest.NewRequest("DELETE", "/test", nil)
+	resp, _ := app.Test(req)
+	if resp.StatusCode != fiber.StatusForbidden {
+		t.Errorf("Expected 403 for staff without student:delete, got %d", resp.StatusCode)
+	}
+}
+

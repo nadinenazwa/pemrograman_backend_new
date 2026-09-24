@@ -18,6 +18,7 @@ func NewApp(
 	achievementService *service.AchievementService,
 	authService *service.AuthService,
 	jwtManager *helper.JWTManager,
+	perms *helper.PermissionSet,
 ) *fiber.App {
 	app := fiber.New(fiber.Config{
 		BodyLimit: 1 * 1024 * 1024, // 1 MB
@@ -25,7 +26,7 @@ func NewApp(
 
 	allowedOrigins := GetEnv("ALLOWED_ORIGINS", "*")
 	middleware.Register(app, logger, allowedOrigins)
-	route.Register(app, pool, studentService, achievementService, authService, jwtManager)
+	route.Register(app, pool, studentService, achievementService, authService, jwtManager, perms)
 
 	return app
 }

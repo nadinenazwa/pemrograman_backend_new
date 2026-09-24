@@ -36,23 +36,35 @@ func main() {
 	}
 	defer pool.Close()
 
-	// 4. Perakitan dari dalam ke luar: repository -> service
+	// 4. Load RBAC permissions dari database (sekali saat startup)
+	roleRepo := repository.NewRoleRepository(pool)
+	rolePerms, err := roleRepo.LoadPermissions(context.Background())
+	if err != nil {
+		logger.Error("gagal memuat permission RBAC dari database", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+	perms := helper.NewPermissionSet(rolePerms)
+	logger.Info("permission RBAC berhasil dimuat",
+		slog.Int("jumlah_role", len(perms.KnownRoles())),
+	)
+
+	// 5. Perakitan dari dalam ke luar: repository -> service
 	studentRepo := repository.NewStudentRepository(pool)
 	achievementRepo := repository.NewAchievementRepository(pool)
 	userRepo := repository.NewUserRepository(pool)
 	refreshTokenRepo := repository.NewRefreshTokenRepository(pool)
 
-	studentService := service.NewStudentService(studentRepo)
+	studentService := service.NewStudentService(studentRepo, perms)
 	achievementService := service.NewAchievementService(studentRepo, achievementRepo)
-	authService := service.NewAuthService(userRepo, refreshTokenRepo, jwtManager)
+	authService := service.NewAuthService(userRepo, refreshTokenRepo, jwtManager, perms)
 
-	// 5. Aplikasi Fiber
-	app := config.NewApp(logger, pool, studentService, achievementService, authService, jwtManager)
+	// 6. Aplikasi Fiber
+	app := config.NewApp(logger, pool, studentService, achievementService, authService, jwtManager, perms)
 
 	// Membaca port dari .env, jika tidak ada gunakan default "3000"
 	port := config.GetEnv("APP_PORT", "3000")
 
-	// 6. Jalankan server di dalam goroutine
+	// 7. Jalankan server di dalam goroutine
 	go func() {
 		if err := app.Listen(":" + port); err != nil {
 			logger.Error("server berhenti", slog.String("error", err.Error()))
@@ -61,7 +73,7 @@ func main() {
 	}()
 	logger.Info("server berjalan", slog.String("port", port))
 
-	// 7. Graceful shutdown: tunggu sinyal interupsi (Ctrl+C)
+	// 8. Graceful shutdown: tunggu sinyal interupsi (Ctrl+C)
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit

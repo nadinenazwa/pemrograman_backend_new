@@ -20,6 +20,7 @@ func Register(
 	achievementService *service.AchievementService,
 	authService *service.AuthService,
 	jwtManager *helper.JWTManager,
+	perms *helper.PermissionSet,
 ) {
 	v1 := app.Group("/api/v1")
 
@@ -38,14 +39,20 @@ func Register(
 	// /auth/me
 	auth.Get("/me", authRequired, authService.Me)
 
-	// Seluruh endpoint students membutuhkan login
+	// === Seluruh endpoint students membutuhkan login ===
 	students := v1.Group("/students", middleware.RequireJSON, authRequired)
-	students.Get("/", studentService.List)
+
+	// Permission-based: middleware menangani otorisasi
+	students.Get("/", middleware.RequirePermission(perms, "student:list"), studentService.List)
+	students.Post("/", middleware.RequirePermission(perms, "student:create"), studentService.Create)
+	students.Delete("/:id", middleware.RequirePermission(perms, "student:delete"), studentService.Delete)
+
+	// Ownership-based: service menangani otorisasi via CanAccessStudent
 	students.Get("/:id", studentService.Get)
-	students.Post("/", studentService.Create)
 	students.Put("/:id", studentService.Replace)
 	students.Patch("/:id", studentService.Patch)
-	students.Delete("/:id", studentService.Delete)
+
+	// Achievements (tidak ada perubahan RBAC)
 	students.Get("/:nim/achievements", achievementService.ListByStudentNIM)
 }
 

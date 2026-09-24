@@ -33,19 +33,33 @@ func Register(app *fiber.App, logger *slog.Logger, allowedOrigins string) {
 }
 
 // RequestLogger mencatat SETIAP request (apa pun hasilnya) sebagai satu
+// log entry. Jika request sudah melewati RequireAuth, log juga user_id dan role.
 func RequestLogger(logger *slog.Logger) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		start := time.Now()
 		err := c.Next()
 		requestID, _ := c.Locals("requestid").(string)
-		logger.Info("http_request",
+
+		// Field dasar yang selalu di-log
+		fields := []any{
 			slog.String("request_id", requestID),
 			slog.String("method", c.Method()),
 			slog.String("path", c.Path()),
 			slog.Int("status", c.Response().StatusCode()),
 			slog.Duration("duration", time.Since(start)),
 			slog.String("ip", c.IP()),
-		)
+		}
+
+		// Jika user sudah terautentikasi, tambahkan user_id dan role
+		// TIDAK log password, access token, refresh token, atau JWT_SECRET
+		if authUser, ok := c.Locals("auth_user").(model.AuthUser); ok {
+			fields = append(fields,
+				slog.Int("user_id", authUser.ID),
+				slog.String("role", authUser.Role),
+			)
+		}
+
+		logger.Info("http_request", fields...)
 		return err
 	}
 }
@@ -123,4 +137,26 @@ func LoginRateLimiter() fiber.Handler {
 		},
 		SkipSuccessfulRequests: true,
 	})
+}
+
+// RequirePermission adalah middleware untuk memeriksa apakah user memiliki permission tertentu.
+// HARUS dijalankan SETELAH RequireAuth.
+//
+// Prinsip:
+//   - 401 Unauthorized = belum terautentikasi (auth_user tidak ada di Locals)
+//   - 403 Forbidden = sudah login tetapi tidak memiliki permission
+//   - Fail closed: jika permission tidak ditemukan atau role tidak dikenal → 403
+func RequirePermission(perms *helper.PermissionSet, permission string) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		authUser, ok := c.Locals("auth_user").(model.AuthUser)
+		if !ok {
+			return helper.Fail(c, fiber.StatusUnauthorized, "Token autentikasi diperlukan")
+		}
+
+		if !perms.Can(authUser.Role, permission) {
+			return helper.Fail(c, fiber.StatusForbidden, "Anda tidak memiliki izin untuk aksi ini")
+		}
+
+		return c.Next()
+	}
 }
