@@ -21,7 +21,8 @@ func NewApp(
 	perms *helper.PermissionSet,
 ) *fiber.App {
 	app := fiber.New(fiber.Config{
-		BodyLimit: 1 * 1024 * 1024, // 1 MB
+		BodyLimit:    1 * 1024 * 1024, // 1 MB
+		ErrorHandler: helper.ErrorHandler,
 	})
 
 	allowedOrigins := GetEnv("ALLOWED_ORIGINS", "*")
