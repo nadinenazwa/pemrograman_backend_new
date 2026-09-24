@@ -33,19 +33,33 @@ func Register(app *fiber.App, logger *slog.Logger, allowedOrigins string) {
 }
 
 // RequestLogger mencatat SETIAP request (apa pun hasilnya) sebagai satu
-// log entry. Jika request sudah melewati RequireAuth, log juga user_id dan role.
+// log entry. Menggunakan status response AKTUAL yang diberikan ke client.
+// 4xx → WARN (msg=request_rejected), 5xx → ERROR (msg=request_failed).
 func RequestLogger(logger *slog.Logger) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		start := time.Now()
 		err := c.Next()
 		requestID, _ := c.Locals("requestid").(string)
 
+		// Gunakan status response AKTUAL yang diberikan ke client.
+		// Karena ErrorHandler dijalankan setelah middleware, kita infer status dari error.
+		status := c.Response().StatusCode()
+		if err != nil {
+			if appErr, ok := err.(*helper.AppError); ok {
+				status = appErr.Status
+			} else if fiberErr, ok := err.(*fiber.Error); ok {
+				status = fiberErr.Code
+			} else {
+				status = fiber.StatusInternalServerError
+			}
+		}
+
 		// Field dasar yang selalu di-log
 		fields := []any{
 			slog.String("request_id", requestID),
 			slog.String("method", c.Method()),
 			slog.String("path", c.Path()),
-			slog.Int("status", c.Response().StatusCode()),
+			slog.Int("status", status),
 			slog.Duration("duration", time.Since(start)),
 			slog.String("ip", c.IP()),
 		}
@@ -59,7 +73,16 @@ func RequestLogger(logger *slog.Logger) fiber.Handler {
 			)
 		}
 
-		logger.Info("http_request", fields...)
+		// Log level berdasarkan status code aktual
+		switch {
+		case status >= 500:
+			logger.Error("request_failed", fields...)
+		case status >= 400:
+			logger.Warn("request_rejected", fields...)
+		default:
+			logger.Info("http_request", fields...)
+		}
+
 		return err
 	}
 }
@@ -74,7 +97,7 @@ func RequireJSON(c *fiber.Ctx) error {
 	if methodsWithBody[c.Method()] {
 		contentType := c.Get("Content-Type")
 		if !strings.HasPrefix(contentType, fiber.MIMEApplicationJSON) {
-			return helper.Fail(c, fiber.StatusUnsupportedMediaType, "Content-Type harus application/json")
+			return helper.ErrUnsupportedMedia("Content-Type harus application/json")
 		}
 	}
 	return c.Next()
@@ -89,7 +112,7 @@ func RequireAuth(jwtManager *helper.JWTManager) fiber.Handler {
 		// Header tidak ada atau format salah
 		if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
 			c.Set("WWW-Authenticate", `Bearer realm="api"`)
-			return helper.Fail(c, fiber.StatusUnauthorized, "Token autentikasi diperlukan")
+			return helper.ErrUnauthorized("Token autentikasi diperlukan")
 		}
 
 		tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
@@ -99,9 +122,9 @@ func RequireAuth(jwtManager *helper.JWTManager) fiber.Handler {
 		if err != nil {
 			c.Set("WWW-Authenticate", `Bearer realm="api"`)
 			if err == helper.ErrTokenExpired {
-				return helper.Fail(c, fiber.StatusUnauthorized, "Token sudah kedaluwarsa, silakan refresh")
+				return helper.ErrUnauthorized("Token sudah kedaluwarsa, silakan refresh")
 			}
-			return helper.Fail(c, fiber.StatusUnauthorized, "Token tidak valid")
+			return helper.ErrUnauthorized("Token tidak valid")
 		}
 
 		// Ambil data user dari claims
@@ -133,28 +156,22 @@ func LoginRateLimiter() fiber.Handler {
 		LimitReached: func(c *fiber.Ctx) error {
 			retryAfter := 900 // 15 menit dalam detik
 			c.Set("Retry-After", strconv.Itoa(retryAfter))
-			return helper.Fail(c, fiber.StatusTooManyRequests, "Terlalu banyak percobaan login, coba lagi nanti")
+			return helper.ErrTooManyRequests("Terlalu banyak percobaan login, coba lagi nanti")
 		},
 		SkipSuccessfulRequests: true,
 	})
 }
 
-// RequirePermission adalah middleware untuk memeriksa apakah user memiliki permission tertentu.
-// HARUS dijalankan SETELAH RequireAuth.
-//
-// Prinsip:
-//   - 401 Unauthorized = belum terautentikasi (auth_user tidak ada di Locals)
-//   - 403 Forbidden = sudah login tetapi tidak memiliki permission
-//   - Fail closed: jika permission tidak ditemukan atau role tidak dikenal → 403
+
 func RequirePermission(perms *helper.PermissionSet, permission string) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		authUser, ok := c.Locals("auth_user").(model.AuthUser)
 		if !ok {
-			return helper.Fail(c, fiber.StatusUnauthorized, "Token autentikasi diperlukan")
+			return helper.ErrUnauthorized("Token autentikasi diperlukan")
 		}
 
 		if !perms.Can(authUser.Role, permission) {
-			return helper.Fail(c, fiber.StatusForbidden, "Anda tidak memiliki izin untuk aksi ini")
+			return helper.ErrForbidden("Anda tidak memiliki izin untuk aksi ini")
 		}
 
 		return c.Next()

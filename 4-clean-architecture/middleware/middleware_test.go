@@ -12,7 +12,8 @@ import (
 
 func TestLoginRateLimiter_OnlyCountsFailed(t *testing.T) {
 	app := fiber.New(fiber.Config{
-		ProxyHeader: "X-Forwarded-For",
+		ProxyHeader:  "X-Forwarded-For",
+		ErrorHandler: helper.ErrorHandler,
 	})
 	
 	app.Post("/login", LoginRateLimiter(), func(c *fiber.Ctx) error {
@@ -83,7 +84,7 @@ func buildTestPermsMiddleware() *helper.PermissionSet {
 
 func TestRequirePermission_NoAuth_Returns401(t *testing.T) {
 	perms := buildTestPermsMiddleware()
-	app := fiber.New()
+	app := fiber.New(fiber.Config{ErrorHandler: helper.ErrorHandler})
 
 	// Tidak ada RequireAuth sebelumnya → auth_user tidak ada di Locals
 	app.Get("/test", RequirePermission(perms, "student:list"), func(c *fiber.Ctx) error {
@@ -99,7 +100,7 @@ func TestRequirePermission_NoAuth_Returns401(t *testing.T) {
 
 func TestRequirePermission_WithPermission_Returns200(t *testing.T) {
 	perms := buildTestPermsMiddleware()
-	app := fiber.New()
+	app := fiber.New(fiber.Config{ErrorHandler: helper.ErrorHandler})
 
 	// Simulasi RequireAuth: set auth_user di Locals
 	app.Use(func(c *fiber.Ctx) error {
@@ -119,7 +120,7 @@ func TestRequirePermission_WithPermission_Returns200(t *testing.T) {
 
 func TestRequirePermission_WithoutPermission_Returns403(t *testing.T) {
 	perms := buildTestPermsMiddleware()
-	app := fiber.New()
+	app := fiber.New(fiber.Config{ErrorHandler: helper.ErrorHandler})
 
 	// User role tidak memiliki student:list
 	app.Use(func(c *fiber.Ctx) error {
@@ -139,7 +140,7 @@ func TestRequirePermission_WithoutPermission_Returns403(t *testing.T) {
 
 func TestRequirePermission_UnknownRole_Returns403(t *testing.T) {
 	perms := buildTestPermsMiddleware()
-	app := fiber.New()
+	app := fiber.New(fiber.Config{ErrorHandler: helper.ErrorHandler})
 
 	app.Use(func(c *fiber.Ctx) error {
 		c.Locals("auth_user", model.AuthUser{ID: 99, Username: "hacker", Role: "superadmin"})
@@ -158,7 +159,7 @@ func TestRequirePermission_UnknownRole_Returns403(t *testing.T) {
 
 func TestRequirePermission_StaffLacksDelete_Returns403(t *testing.T) {
 	perms := buildTestPermsMiddleware()
-	app := fiber.New()
+	app := fiber.New(fiber.Config{ErrorHandler: helper.ErrorHandler})
 
 	app.Use(func(c *fiber.Ctx) error {
 		c.Locals("auth_user", model.AuthUser{ID: 2, Username: "staf", Role: "staff"})
@@ -174,4 +175,3 @@ func TestRequirePermission_StaffLacksDelete_Returns403(t *testing.T) {
 		t.Errorf("Expected 403 for staff without student:delete, got %d", resp.StatusCode)
 	}
 }
-
