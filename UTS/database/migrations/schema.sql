@@ -1,0 +1,35 @@
+CREATE TABLE users (
+	id SERIAL PRIMARY KEY,
+	email VARCHAR(255) UNIQUE NOT NULL,
+	password VARCHAR(255) NOT NULL,
+	role VARCHAR(50) NOT NULL
+);
+
+CREATE TABLE students (
+	id SERIAL PRIMARY KEY,
+	user_id INT UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	nim VARCHAR(12) UNIQUE NOT NULL,
+	nama VARCHAR(255) NOT NULL,
+	prodi VARCHAR(100) NOT NULL,
+	angkatan VARCHAR(4) NOT NULL,
+	ipk_terakhir DECIMAL(3, 2) NOT NULL DEFAULT 0.00,
+	deleted_at TIMESTAMP
+);
+
+CREATE TABLE courses (
+	id SERIAL PRIMARY KEY,
+	kode_mk VARCHAR(20) UNIQUE NOT NULL,
+	nama_mk VARCHAR(255) NOT NULL,
+	sks INT NOT NULL,
+	semester VARCHAR(20) NOT NULL,
+	kuota INT NOT NULL
+);
+
+CREATE TABLE enrollments (
+	id SERIAL PRIMARY KEY,
+	student_id INT NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+	course_id INT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+	tahun_akademik VARCHAR(20) NOT NULL,
+	created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+	UNIQUE(student_id, course_id, tahun_akademik)
+);
