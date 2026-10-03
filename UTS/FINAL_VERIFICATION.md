@@ -96,5 +96,3 @@ C:\KuliahNadine\Backend\UTS> git ls-files | findstr .env
 C:\KuliahNadine\Backend\UTS> git ls-files | findstr .exe
 (Kosong, tidak ada executable code yang tersimpan di remote)
 ```
-
-FINAL STATUS: READY TO SUBMIT
