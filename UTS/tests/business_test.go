@@ -35,7 +35,7 @@ func TestEnrollmentTransaction(t *testing.T) {
 	config.LoadEnv()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	
+
 	pool, err := config.ConnectDB(ctx)
 	if err != nil {
 		t.Skip("Database not available for integration test")
