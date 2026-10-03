@@ -40,8 +40,12 @@ Semua tabel, konstrain (seperti UNIQUE pada `enrollments` dan `students`), serta
 | **KRS** | POST `/api/v1/enrollments` Duplicate Course | HTTP 409 | HTTP 409 | PASS |
 | **KRS** | POST `/api/v1/enrollments` Course Penuh (Kuota) | HTTP 422 ("Kuota penuh") | HTTP 422 | PASS |
 | **KRS** | POST `/api/v1/enrollments` Over SKS Limit | HTTP 422 (Sebutkan sisa SKS) | HTTP 422 ("Total SKS melebihi batas. Sisa SKS: 0") | PASS |
-| **KRS** | DELETE `/api/v1/enrollments/:id` Milik Sendiri | HTTP 204 | HTTP 204 | PASS |
-| **KRS** | DELETE `/api/v1/enrollments/:id` Milik Orang Lain | HTTP 404 | HTTP 404 | PASS |
+| **KRS** | DELETE `/api/v1/enrollments/:id` milik sendiri | HTTP 204 | HTTP 204 | PASS |
+| **KRS** | DELETE `/api/v1/enrollments/:id` milik mahasiswa lain | HTTP 403 | HTTP 403 | PASS |
+| **KRS** | DELETE `/api/v1/enrollments/:id` tidak ditemukan | HTTP 404 | HTTP 404 | PASS |
+| **KRS** | DELETE `/api/v1/enrollments/:id` sebagai admin/non-student | HTTP 403 | HTTP 403 | PASS |
+
+> **Catatan KRS Delete:** Endpoint penghapusan krs sekarang memeriksa otorisasi pemilik data di dalam level _repository_. Mekanisme _ownership check_ ini mampu membedakan dengan benar antara `resource tidak ada` (404) dan `resource bukan milik current student` (403) tanpa mengorbankan _security_.
 
 ## 3. Concurrency / Quota
 Implementasi telah dikonfirmasi di kode menggunakan `tx.Begin(ctx)` dengan _row level lock_ `SELECT ... FOR UPDATE` saat menarik `courses` sebelum insert data ke `enrollments`. Hal ini mencegah _race condition_ apabila ada beberapa Mahasiswa berlomba mengambil sisa 1 kursi mata kuliah secara eksak bersamaan. Pengujian Quota Limit juga lolos (`422 Kuota Penuh`).

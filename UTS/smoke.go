@@ -167,8 +167,10 @@ func main() {
 	// If I can't get enrollment_id, I'll delete by enrollment_id = 1.
 	doReq("DELETE", "/api/v1/enrollments/1", student1Token, nil) 
 	// student2 tries to delete student1's enrollment
-	doReq("DELETE", "/api/v1/enrollments/2", student1Token, nil) // assuming 2 belongs to student1
-	doReq("DELETE", "/api/v1/enrollments/2", student2Token, nil) // should be 403 or 404 (404 in my code if student doesn't own it)
+	doReq("DELETE", "/api/v1/enrollments/2", student1Token, nil) // student1 deleting his own -> 204
+	doReq("DELETE", "/api/v1/enrollments/3", student2Token, nil) // student2 deleting someone else's -> 403
+	doReq("DELETE", "/api/v1/enrollments/9999", student2Token, nil) // not found -> 404
+	doReq("DELETE", "/api/v1/enrollments/1", adminToken, nil) // admin -> 403
 
 	fmt.Println("Done smoke testing.")
 }

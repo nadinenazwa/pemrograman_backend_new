@@ -89,12 +89,19 @@ func (r *EnrollmentRepository) Create(ctx context.Context, studentID int, req *m
 }
 
 func (r *EnrollmentRepository) Delete(ctx context.Context, enrollmentID int, studentID int) error {
-	cmdTag, err := r.pool.Exec(ctx, `DELETE FROM enrollments WHERE id = $1 AND student_id = $2`, enrollmentID, studentID)
+	var ownerID int
+	err := r.pool.QueryRow(ctx, `SELECT student_id FROM enrollments WHERE id = $1`, enrollmentID).Scan(&ownerID)
 	if err != nil {
+		if err == pgx.ErrNoRows {
+			return errors.New("enrollment_not_found")
+		}
 		return err
 	}
-	if cmdTag.RowsAffected() == 0 {
-		return pgx.ErrNoRows
+
+	if ownerID != studentID {
+		return errors.New("forbidden_enrollment")
 	}
-	return nil
+
+	_, err = r.pool.Exec(ctx, `DELETE FROM enrollments WHERE id = $1`, enrollmentID)
+	return err
 }

@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/jackc/pgx/v5"
 
 	"siakad/internal/models"
 	"siakad/internal/repositories"
@@ -84,8 +83,11 @@ func (h *EnrollmentHandler) Delete(c *fiber.Ctx) error {
 
 	err = h.repo.Delete(ctx, id, student.ID)
 	if err != nil {
-		if err == pgx.ErrNoRows {
-			return utils.SendError(c, fiber.StatusNotFound, "Enrollment tidak ditemukan atau bukan milik Anda", nil)
+		if err.Error() == "enrollment_not_found" {
+			return utils.SendError(c, fiber.StatusNotFound, "Enrollment tidak ditemukan", nil)
+		}
+		if err.Error() == "forbidden_enrollment" {
+			return utils.SendError(c, fiber.StatusForbidden, "Akses ditolak: bukan milik Anda", nil)
 		}
 		return utils.ErrorHandler(c, err)
 	}
