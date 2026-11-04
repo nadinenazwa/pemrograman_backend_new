@@ -48,6 +48,10 @@ func NewAppError(status int, code, message string) *AppError {
 	return &AppError{Status: status, Code: code, Message: message}
 }
 
+func NewError(status int, code, message string) *AppError {
+	return &AppError{Status: status, Code: code, Message: message}
+}
+
 func NewAppErrorWithCause(status int, code, message string, cause error) *AppError {
 	return &AppError{Status: status, Code: code, Message: message, cause: cause}
 }
@@ -59,6 +63,26 @@ func NewValidationError(fields map[string]string) *AppError {
 		Message: "Validasi gagal",
 		Fields:  fields,
 	}
+}
+
+func BadRequest(msg string) *AppError {
+	return NewAppError(fiber.StatusBadRequest, CodeBadRequest, msg)
+}
+
+func NotFound(msg string) *AppError {
+	return NewAppError(fiber.StatusNotFound, CodeNotFound, msg)
+}
+
+func Unauthorized(msg string) *AppError {
+	return NewAppError(fiber.StatusUnauthorized, CodeUnauthorized, msg)
+}
+
+func Validation(fields map[string]string) *AppError {
+	return NewValidationError(fields)
+}
+
+func Internal(cause error) *AppError {
+	return NewAppErrorWithCause(fiber.StatusInternalServerError, CodeInternalError, "Terjadi kesalahan internal pada server", cause)
 }
 
 func ErrBadRequest(msg string) *AppError {
