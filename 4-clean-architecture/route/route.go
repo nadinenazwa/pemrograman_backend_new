@@ -19,6 +19,7 @@ func Register(
 	studentService *service.StudentService,
 	achievementService *service.AchievementService,
 	authService *service.AuthService,
+	portfolioService *service.PortfolioService,
 	jwtManager *helper.JWTManager,
 	perms *helper.PermissionSet,
 ) {
@@ -56,6 +57,20 @@ func Register(
 
 	// Achievements (tidak ada perubahan RBAC)
 	students.Get("/:nim/achievements", achievementService.ListByStudentNIM)
+
+	// === Portfolio endpoints (MongoDB) ===
+	// GET & PUT /students/:id/portfolio
+	students.Get("/:id/portfolio", portfolioService.GetPortfolio)
+	students.Put("/:id/portfolio", middleware.RequireJSON, portfolioService.UpsertPortfolio)
+
+	// POST /students/:id/portfolio/projects
+	students.Post("/:id/portfolio/projects", middleware.RequireJSON, portfolioService.AddProject)
+
+	// DELETE /students/:id/portfolio/projects/:projectId
+	students.Delete("/:id/portfolio/projects/:projectId", portfolioService.DeleteProject)
+
+	// === Portfolio statistics (tidak perlu :id) ===
+	v1.Get("/portfolios/stats/technologies", authRequired, portfolioService.TechStats)
 }
 
 func healthCheck(pool *pgxpool.Pool) fiber.Handler {

@@ -28,7 +28,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 3. Database
+	// 3. Database PostgreSQL
 	pool, err := database.NewPool(context.Background())
 	if err != nil {
 		logger.Error("gagal terhubung ke database", slog.String("error", err.Error()))
@@ -48,23 +48,45 @@ func main() {
 		slog.Int("jumlah_role", len(perms.KnownRoles())),
 	)
 
-	// 5. Perakitan dari dalam ke luar: repository -> service
+	// 5. Database MongoDB
+	mongoClient, err := database.NewMongoClient(context.Background())
+	if err != nil {
+		logger.Error("gagal terhubung ke MongoDB", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+	defer func() {
+		if err := mongoClient.Disconnect(context.Background()); err != nil {
+			logger.Error("gagal menutup koneksi MongoDB", slog.String("error", err.Error()))
+		}
+	}()
+	mongoDB := database.GetMongoDB(mongoClient)
+	logger.Info("koneksi MongoDB berhasil")
+
+	// 6. Perakitan dari dalam ke luar: repository -> service
 	studentRepo := repository.NewStudentRepository(pool)
 	achievementRepo := repository.NewAchievementRepository(pool)
 	userRepo := repository.NewUserRepository(pool)
 	refreshTokenRepo := repository.NewRefreshTokenRepository(pool)
 
+	portfolioRepo, err := repository.NewPortfolioRepository(context.Background(), mongoDB)
+	if err != nil {
+		logger.Error("gagal menginisialisasi portfolio repository (MongoDB index)", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+	logger.Info("MongoDB portfolio repository dan index siap")
+
 	studentService := service.NewStudentService(studentRepo, perms)
 	achievementService := service.NewAchievementService(studentRepo, achievementRepo)
 	authService := service.NewAuthService(userRepo, refreshTokenRepo, jwtManager, perms)
+	portfolioService := service.NewPortfolioService(portfolioRepo, studentRepo, perms)
 
-	// 6. Aplikasi Fiber
-	app := config.NewApp(logger, pool, studentService, achievementService, authService, jwtManager, perms)
+	// 7. Aplikasi Fiber
+	app := config.NewApp(logger, pool, studentService, achievementService, authService, portfolioService, jwtManager, perms)
 
 	// Membaca port dari .env, jika tidak ada gunakan default "3000"
 	port := config.GetEnv("APP_PORT", "3000")
 
-	// 7. Jalankan server di dalam goroutine
+	// 8. Jalankan server di dalam goroutine
 	go func() {
 		if err := app.Listen(":" + port); err != nil {
 			logger.Error("server berhenti", slog.String("error", err.Error()))
@@ -73,7 +95,7 @@ func main() {
 	}()
 	logger.Info("server berjalan", slog.String("port", port))
 
-	// 8. Graceful shutdown: tunggu sinyal interupsi (Ctrl+C)
+	// 9. Graceful shutdown: tunggu sinyal interupsi (Ctrl+C)
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
