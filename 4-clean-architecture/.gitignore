@@ -3,3 +3,9 @@ logs/
 *.exe
 *.zip
 *.pdf
+*.docx
+laporan_modul11/
+docx_images/
+docs/
+scripts/
+test_evidence/
