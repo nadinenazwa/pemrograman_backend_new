@@ -42,6 +42,9 @@ func GetValidator() *validator.Validate {
 
 		// Custom validation domain-specific students: validnim (format NIM harus angka, 7-20 digit)
 		_ = validate.RegisterValidation("validnim", validateNIM)
+
+		// Custom validation Modul 10: nomongoop (mencegah operator MongoDB mentah dan NoSQL injection)
+		_ = validate.RegisterValidation("nomongoop", validateNoMongoOperator)
 	})
 	return validate
 }
@@ -96,6 +99,37 @@ func validateNIM(fl validator.FieldLevel) bool {
 	return true
 }
 
+// validateNoMongoOperator memeriksa agar string tidak mengandung operator MongoDB mentah
+// atau upaya NoSQL injection (misal {"$gt": ...}, $where, $ne, dsb.)
+func validateNoMongoOperator(fl validator.FieldLevel) bool {
+	val := strings.TrimSpace(fl.Field().String())
+	if val == "" {
+		return true
+	}
+
+	// 1. Ditolak jika diawali dengan karakter '$' (karakter operator MongoDB)
+	if strings.HasPrefix(val, "$") {
+		return false
+	}
+
+	// 2. Ditolak jika mengandung format objek JSON operator BSON mentah
+	lower := strings.ToLower(val)
+	dangerousPatterns := []string{
+		"\"$gt\"", "\"$gte\"", "\"$lt\"", "\"$lte\"", "\"$ne\"", "\"$eq\"",
+		"\"$in\"", "\"$nin\"", "\"$regex\"", "\"$where\"", "\"$exists\"",
+		"\"$expr\"", "\"$or\"", "\"$and\"", "\"$nor\"", "\"$not\"",
+		"{\"$", "{\\\"$", "$where", "$regex",
+	}
+
+	for _, pattern := range dangerousPatterns {
+		if strings.Contains(lower, pattern) {
+			return false
+		}
+	}
+
+	return true
+}
+
 // messageFor menerjemahkan tag validation menjadi pesan bermakna dalam Bahasa Indonesia.
 func messageFor(fe validator.FieldError) string {
 	field := fe.Field()
@@ -125,6 +159,8 @@ func messageFor(fe validator.FieldError) string {
 		return fmt.Sprintf("%s tidak boleh mengandung spasi", field)
 	case "validnim":
 		return fmt.Sprintf("%s harus berupa 7-20 digit angka (format NIM)", field)
+	case "nomongoop":
+		return fmt.Sprintf("%s tidak boleh mengandung operator MongoDB mentah", field)
 	case "required_without_all":
 		return fmt.Sprintf("Minimal satu field harus dikirim")
 	case "omitempty":
