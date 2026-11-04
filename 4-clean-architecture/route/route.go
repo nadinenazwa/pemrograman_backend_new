@@ -20,6 +20,8 @@ func Register(
 	achievementService *service.AchievementService,
 	authService *service.AuthService,
 	portfolioService *service.PortfolioService,
+	courseService *service.CourseService,
+	notificationService *service.NotificationService,
 	jwtManager *helper.JWTManager,
 	perms *helper.PermissionSet,
 ) {
@@ -71,6 +73,29 @@ func Register(
 
 	// === Portfolio statistics (tidak perlu :id) ===
 	v1.Get("/portfolios/stats/technologies", authRequired, portfolioService.TechStats)
+
+	// === Courses & KRS (Modul 9 & 11) ===
+	if courseService != nil {
+		courses := v1.Group("/courses", middleware.RequireJSON, authRequired)
+		courses.Get("/", courseService.List)
+		courses.Get("/mine", courseService.Mine)
+		courses.Get("/:id", courseService.Get)
+		courses.Post("/:id/enroll", courseService.Enroll)
+		courses.Delete("/:id/enroll", courseService.Drop)
+		courses.Patch("/:id", middleware.RequirePermission(perms, "course:manage"), courseService.UpdateQuota)
+
+		enrollments := v1.Group("/enrollments", middleware.RequireJSON, authRequired)
+		enrollments.Post("/swap", courseService.Swap)
+	}
+
+	// === Notifications & Monitoring (Modul 11) ===
+	if notificationService != nil {
+		notifications := v1.Group("/notifications", middleware.RequireJSON, authRequired)
+		notifications.Get("/mine", notificationService.Mine)
+
+		admin := v1.Group("/admin", middleware.RequireJSON, authRequired)
+		admin.Get("/queue", middleware.RequirePermission(perms, "queue:monitor"), notificationService.Monitor)
+	}
 }
 
 func healthCheck(pool *pgxpool.Pool) fiber.Handler {

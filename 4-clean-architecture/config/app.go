@@ -18,6 +18,8 @@ func NewApp(
 	achievementService *service.AchievementService,
 	authService *service.AuthService,
 	portfolioService *service.PortfolioService,
+	courseService *service.CourseService,
+	notificationService *service.NotificationService,
 	jwtManager *helper.JWTManager,
 	perms *helper.PermissionSet,
 ) *fiber.App {
@@ -28,7 +30,12 @@ func NewApp(
 
 	allowedOrigins := GetEnv("ALLOWED_ORIGINS", "*")
 	middleware.Register(app, logger, allowedOrigins)
-	route.Register(app, pool, studentService, achievementService, authService, portfolioService, jwtManager, perms)
+	route.Register(
+		app, pool,
+		studentService, achievementService, authService, portfolioService,
+		courseService, notificationService,
+		jwtManager, perms,
+	)
 
 	return app
 }

@@ -2,33 +2,39 @@ package main
 
 import (
 	"context"
+	"flag"
 	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"github.com/gofiber/fiber/v2"
+	"github.com/hibiken/asynq"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/joho/godotenv"
+
 	"api-students-db/app/repository"
 	"api-students-db/app/service"
 	"api-students-db/config"
 	"api-students-db/database"
 	"api-students-db/helper"
-	"github.com/joho/godotenv"
 )
 
 func main() {
-	// 1. Konfigurasi dan logger
-	_ = godotenv.Load() // Memuat file .env
+	_ = godotenv.Load()
 	logger := config.NewLogger()
 
-	// 2. JWT Manager (gagal start jika JWT_SECRET kosong/terlalu pendek)
-	jwtManager, err := helper.NewJWTManager()
-	if err != nil {
-		logger.Error("gagal menginisialisasi JWT", slog.String("error", err.Error()))
+	role := flag.String("role", config.GetEnv("APP_ROLE", "all"), "api | worker | all")
+	flag.Parse()
+
+	runAPI := *role == "api" || *role == "all"
+	runWorker := *role == "worker" || *role == "all"
+	if !runAPI && !runWorker {
+		logger.Error("role tidak dikenal", slog.String("role", *role))
 		os.Exit(1)
 	}
 
-	// 3. Database PostgreSQL
 	pool, err := database.NewPool(context.Background())
 	if err != nil {
 		logger.Error("gagal terhubung ke database", slog.String("error", err.Error()))
@@ -36,76 +42,109 @@ func main() {
 	}
 	defer pool.Close()
 
-	// 4. Load RBAC permissions dari database (sekali saat startup)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	var app *fiber.App
+	var inspector *asynq.Inspector
+
+	if runAPI {
+		app, inspector = startAPI(logger, pool)
+		if app == nil {
+			os.Exit(1)
+		}
+	}
+
+	var stopWorker func()
+	if runWorker {
+		stopWorker = startWorker(ctx, logger, pool)
+		if stopWorker == nil {
+			os.Exit(1)
+		}
+	}
+
+	logger.Info("aplikasi berjalan", slog.String("role", *role))
+	<-ctx.Done()
+
+	if app != nil {
+		ctxShut, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := app.ShutdownWithContext(ctxShut); err != nil {
+			logger.Error("shutdown HTTP tidak rapi", slog.String("error", err.Error()))
+		}
+		if inspector != nil {
+			_ = inspector.Close()
+		}
+	}
+
+	if stopWorker != nil {
+		stopWorker()
+	}
+
+	logger.Info("aplikasi berhenti dengan rapi")
+}
+
+func startAPI(logger *slog.Logger, pool *pgxpool.Pool) (*fiber.App, *asynq.Inspector) {
+	jwtManager, err := helper.NewJWTManager()
+	if err != nil {
+		logger.Error("gagal menginisialisasi JWT", slog.String("error", err.Error()))
+		return nil, nil
+	}
+
 	roleRepo := repository.NewRoleRepository(pool)
 	rolePerms, err := roleRepo.LoadPermissions(context.Background())
 	if err != nil {
 		logger.Error("gagal memuat permission RBAC dari database", slog.String("error", err.Error()))
-		os.Exit(1)
+		return nil, nil
 	}
 	perms := helper.NewPermissionSet(rolePerms)
-	logger.Info("permission RBAC berhasil dimuat",
-		slog.Int("jumlah_role", len(perms.KnownRoles())),
-	)
 
-	// 5. Database MongoDB
 	mongoClient, err := database.NewMongoClient(context.Background())
 	if err != nil {
 		logger.Error("gagal terhubung ke MongoDB", slog.String("error", err.Error()))
-		os.Exit(1)
+		return nil, nil
 	}
-	defer func() {
-		if err := mongoClient.Disconnect(context.Background()); err != nil {
-			logger.Error("gagal menutup koneksi MongoDB", slog.String("error", err.Error()))
-		}
-	}()
 	mongoDB := database.GetMongoDB(mongoClient)
-	logger.Info("koneksi MongoDB berhasil")
 
-	// 6. Perakitan dari dalam ke luar: repository -> service
 	studentRepo := repository.NewStudentRepository(pool)
 	achievementRepo := repository.NewAchievementRepository(pool)
 	userRepo := repository.NewUserRepository(pool)
 	refreshTokenRepo := repository.NewRefreshTokenRepository(pool)
+	courseRepo := repository.NewCourseRepository(pool)
+	outboxRepo := repository.NewOutboxRepository(pool)
+	notificationRepo := repository.NewNotificationRepository(pool)
+	txManager := repository.NewTxManager(pool)
 
 	portfolioRepo, err := repository.NewPortfolioRepository(context.Background(), mongoDB)
 	if err != nil {
-		logger.Error("gagal menginisialisasi portfolio repository (MongoDB index)", slog.String("error", err.Error()))
-		os.Exit(1)
+		logger.Error("gagal menginisialisasi portfolio repository", slog.String("error", err.Error()))
+		return nil, nil
 	}
-	logger.Info("MongoDB portfolio repository dan index siap")
+
+	inspector := asynq.NewInspector(config.RedisOpt())
 
 	studentService := service.NewStudentService(studentRepo, perms)
 	achievementService := service.NewAchievementService(studentRepo, achievementRepo)
 	authService := service.NewAuthService(userRepo, refreshTokenRepo, jwtManager, perms)
 	portfolioService := service.NewPortfolioService(portfolioRepo, studentRepo, perms)
+	courseService := service.NewCourseService(courseRepo, outboxRepo, txManager)
+	notificationService := service.NewNotificationService(notificationRepo, outboxRepo, inspector)
 
-	// 7. Aplikasi Fiber
-	app := config.NewApp(logger, pool, studentService, achievementService, authService, portfolioService, jwtManager, perms)
+	app := config.NewApp(
+		logger, pool,
+		studentService, achievementService, authService, portfolioService,
+		courseService, notificationService,
+		jwtManager, perms,
+	)
 
-	// Membaca port dari .env, jika tidak ada gunakan default "3000"
 	port := config.GetEnv("APP_PORT", "3000")
-
-	// 8. Jalankan server di dalam goroutine
 	go func() {
 		if err := app.Listen(":" + port); err != nil {
 			logger.Error("server berhenti", slog.String("error", err.Error()))
 			os.Exit(1)
 		}
 	}()
-	logger.Info("server berjalan", slog.String("port", port))
+	logger.Info("HTTP berjalan", slog.String("port", port))
 
-	// 9. Graceful shutdown: tunggu sinyal interupsi (Ctrl+C)
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-
-	logger.Info("sinyal berhenti diterima, menutup server...")
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	if err := app.ShutdownWithContext(ctx); err != nil {
-		logger.Error("gagal menutup server dengan rapi", slog.String("error", err.Error()))
-	}
-	logger.Info("server berhenti dengan rapi")
+	return app, inspector
 }
