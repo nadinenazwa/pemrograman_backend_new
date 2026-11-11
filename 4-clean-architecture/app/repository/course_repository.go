@@ -12,7 +12,7 @@ import (
 
 var (
 	ErrCourseFull       = errors.New("kuota kelas sudah penuh")
-	ErrAlreadyEnrolled  = errors.New("sudah terdaftar di kelas ini")
+	ErrAlreadyEnrolled  = fmt.Errorf("%w: sudah terdaftar di kelas ini", ErrDuplicate)
 	ErrNotEnrolled      = errors.New("tidak terdaftar di kelas ini")
 	ErrCreditLimit      = errors.New("melebihi batas maksimal 24 SKS")
 	ErrVersionConflict  = errors.New("data sudah diubah pihak lain")

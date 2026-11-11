@@ -47,6 +47,13 @@ type TokenPair struct {
 // AuthUser berisi informasi user yang terautentikasi, disimpan di Fiber Locals.
 type AuthUser struct {
 	ID       int    `json:"id"`
+	UserID   int    `json:"user_id"`
 	Username string `json:"username"`
 	Role     string `json:"role"`
+}
+
+// UserProfile adalah response data untuk GET /auth/me.
+type UserProfile struct {
+	User        User     `json:"user"`
+	Permissions []string `json:"permissions"`
 }

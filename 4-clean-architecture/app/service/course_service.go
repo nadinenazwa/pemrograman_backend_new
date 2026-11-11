@@ -27,7 +27,15 @@ func NewCourseService(
 	return &CourseService{courses: courses, outbox: outbox, tx: tx}
 }
 
-// ---------- GET /courses ----------
+// List godoc
+//
+// @Summary  Daftar seluruh kelas
+// @Tags     courses
+// @Produce  json
+// @Success  200 {object} model.WebResponse{data=[]model.Course}
+// @Failure  401 {object} model.ErrorResponse
+// @Security BearerAuth
+// @Router   /courses [get]
 func (s *CourseService) List(c *fiber.Ctx) error {
 	ctx, cancel := helper.RequestContext(c)
 	defer cancel()
@@ -39,7 +47,17 @@ func (s *CourseService) List(c *fiber.Ctx) error {
 	return helper.Success(c, fiber.StatusOK, "daftar kelas berhasil diambil", courses)
 }
 
-// ---------- GET /courses/:id ----------
+// Get godoc
+//
+// @Summary  Detail satu kelas
+// @Tags     courses
+// @Produce  json
+// @Param    id path int true "ID kelas"
+// @Success  200 {object} model.WebResponse{data=model.Course}
+// @Failure  400 {object} model.ErrorResponse "ID bukan angka positif"
+// @Failure  404 {object} model.ErrorResponse
+// @Security BearerAuth
+// @Router   /courses/{id} [get]
 func (s *CourseService) Get(c *fiber.Ctx) error {
 	ctx, cancel := helper.RequestContext(c)
 	defer cancel()
@@ -56,7 +74,15 @@ func (s *CourseService) Get(c *fiber.Ctx) error {
 	return helper.Success(c, fiber.StatusOK, "data kelas berhasil diambil", course)
 }
 
-// ---------- GET /courses/mine ----------
+// Mine godoc
+//
+// @Summary  KRS milik mahasiswa yang sedang login
+// @Tags     courses
+// @Produce  json
+// @Success  200 {object} model.WebResponse{data=model.MyCourses}
+// @Failure  401 {object} model.ErrorResponse
+// @Security BearerAuth
+// @Router   /courses/mine [get]
 func (s *CourseService) Mine(c *fiber.Ctx) error {
 	ctx, cancel := helper.RequestContext(c)
 	defer cancel()
@@ -76,14 +102,28 @@ func (s *CourseService) Mine(c *fiber.Ctx) error {
 		return helper.Internal(err)
 	}
 
-	return helper.Success(c, fiber.StatusOK, "daftar kelas yang diambil", fiber.Map{
-		"courses":       courses,
-		"total_credits": totalCredits,
-		"max_credits":   MaxCreditsPerSemester,
+	return helper.Success(c, fiber.StatusOK, "KRS berhasil diambil", model.MyCourses{
+		Courses:      courses,
+		TotalCredits: totalCredits,
+		MaxCredits:   MaxCreditsPerSemester,
 	})
 }
 
-// ---------- POST /courses/:id/enroll ----------
+// Enroll godoc
+//
+// @Summary     Mendaftar ke sebuah kelas
+// @Description Mengambil satu kursi dan mencatat event enrollment.created ke outbox dalam SATU transaction.
+// @Description Kode error 409: COURSE_FULL, ALREADY_ENROLLED, CREDIT_LIMIT_EXCEEDED.
+// @Tags        courses
+// @Produce     json
+// @Param       id path int true "ID kelas"
+// @Success     201 {object} model.WebResponse{data=model.Course}
+// @Header      201 {string} Location "URL kelas yang baru didaftari"
+// @Failure     401 {object} model.ErrorResponse
+// @Failure     404 {object} model.ErrorResponse
+// @Failure     409 {object} model.ErrorResponse "Kuota penuh, sudah terdaftar, atau batas SKS terlampaui"
+// @Security    BearerAuth
+// @Router      /courses/{id}/enroll [post]
 func (s *CourseService) Enroll(c *fiber.Ctx) error {
 	ctx, cancel := helper.RequestContext(c)
 	defer cancel()
@@ -121,34 +161,44 @@ func (s *CourseService) Enroll(c *fiber.Ctx) error {
 			return errCreditLimit
 		}
 
-		// 3. Ambil satu kursi secara atomik.
-		enrolled, err = repo.IncrementEnrolled(ctx, courseID)
+		// 3. Ambil satu kursi.
+		updated, err := repo.IncrementEnrolled(ctx, courseID)
 		if err != nil {
 			return err
 		}
+		enrolled = updated
 
-		// 4. Catat event ke outbox memakai transaksi yang sama (Perbaikan Bug 4: pakai s.outbox.WithTx(tx)).
-		if err := s.outbox.WithTx(tx).Insert(ctx, model.EventEnrollmentCreated, model.EnrollmentEvent{
-			UserID:     current.UserID,
-			CourseID:   enrolled.ID,
-			CourseCode: enrolled.Code,
-			CourseName: enrolled.Name,
-		}); err != nil {
+		// 4. Catat pendaftaran.
+		if err := repo.InsertEnrollment(ctx, courseID, current.UserID); err != nil {
 			return err
 		}
 
-		// 5. Catat pendaftarannya. Bila sudah terdaftar, error membatalkan langkah sebelumnya.
-		return repo.InsertEnrollment(ctx, courseID, current.UserID)
+		// 5. Tulis event outbox.
+		return s.outbox.WithTx(tx).Insert(ctx, model.EventEnrollmentCreated, model.EnrollmentEvent{
+			UserID:     current.UserID,
+			CourseID:   course.ID,
+			CourseCode: course.Code,
+			CourseName: course.Name,
+		})
 	})
 	if err != nil {
 		return translateCourseError(err)
 	}
 
-	return helper.Created(c, "berhasil mendaftar kelas", enrolled,
+	return helper.Created(c, "berhasil mendaftar ke kelas", enrolled,
 		"/api/v1/courses/"+strconv.Itoa(courseID))
 }
 
-// ---------- DELETE /courses/:id/enroll ----------
+// Drop godoc
+//
+// @Summary  Keluar dari sebuah kelas
+// @Tags     courses
+// @Param    id path int true "ID kelas"
+// @Success  204 "Berhasil keluar; tanpa body"
+// @Failure  401 {object} model.ErrorResponse
+// @Failure  409 {object} model.ErrorResponse "NOT_ENROLLED"
+// @Security BearerAuth
+// @Router   /courses/{id}/enroll [delete]
 func (s *CourseService) Drop(c *fiber.Ctx) error {
 	ctx, cancel := helper.RequestContext(c)
 	defer cancel()
@@ -169,15 +219,24 @@ func (s *CourseService) Drop(c *fiber.Ctx) error {
 		if err := repo.LockStudent(ctx, current.UserID); err != nil {
 			return err
 		}
+
+		enrolled, err := repo.IsEnrolled(ctx, courseID, current.UserID)
+		if err != nil {
+			return err
+		}
+		if !enrolled {
+			return repository.ErrNotEnrolled
+		}
+
 		if err := repo.DeleteEnrollment(ctx, courseID, current.UserID); err != nil {
 			return err
 		}
+
 		course, err := repo.DecrementEnrolled(ctx, courseID)
 		if err != nil {
 			return err
 		}
 
-		// Perbaikan Bug 5: Gunakan model.EventEnrollmentDropped, bukan EventEnrollmentCreated
 		return s.outbox.WithTx(tx).Insert(ctx, model.EventEnrollmentDropped, model.EnrollmentEvent{
 			UserID:     current.UserID,
 			CourseID:   course.ID,
@@ -192,7 +251,20 @@ func (s *CourseService) Drop(c *fiber.Ctx) error {
 	return helper.NoContent(c)
 }
 
-// ---------- POST /enrollments/swap ----------
+// Swap godoc
+//
+// @Summary     Pindah kelas
+// @Description Keluar dari kelas lama dan masuk ke kelas baru sebagai satu tindakan. Bila kelas baru penuh, mahasiswa tetap di kelas lama.
+// @Tags        courses
+// @Accept      json
+// @Produce     json
+// @Param       body body model.SwapRequest true "Kelas asal dan kelas tujuan"
+// @Success     200 {object} model.WebResponse{data=model.Course}
+// @Failure     401 {object} model.ErrorResponse
+// @Failure     409 {object} model.ErrorResponse "COURSE_FULL, NOT_ENROLLED, CREDIT_LIMIT_EXCEEDED"
+// @Failure     422 {object} model.ErrorResponse
+// @Security    BearerAuth
+// @Router      /enrollments/swap [post]
 func (s *CourseService) Swap(c *fiber.Ctx) error {
 	ctx, cancel := helper.RequestContext(c)
 	defer cancel()
@@ -204,13 +276,13 @@ func (s *CourseService) Swap(c *fiber.Ctx) error {
 
 	var req model.SwapRequest
 	if err := c.BodyParser(&req); err != nil {
-		return helper.BadRequest("body harus berupa JSON yang valid")
+		return helper.BadRequest("body bukan JSON yang valid")
 	}
-	if req.FromCourseID <= 0 || req.ToCourseID <= 0 {
-		return helper.BadRequest("id kelas harus berupa angka positif")
+	if errs := helper.Validate(req); len(errs) > 0 {
+		return helper.ValidationError(errs)
 	}
 	if req.FromCourseID == req.ToCourseID {
-		return helper.BadRequest("to_course_id tidak boleh sama dengan from_course_id")
+		return helper.BadRequest("kelas asal dan kelas tujuan tidak boleh sama")
 	}
 
 	var joined model.Course
@@ -273,7 +345,20 @@ func (s *CourseService) Swap(c *fiber.Ctx) error {
 	return helper.Success(c, fiber.StatusOK, "berhasil pindah kelas", joined)
 }
 
-// ---------- PATCH /courses/:id ---------- (Tugas Mandiri D.2)
+// UpdateQuota godoc
+//
+// @Summary     Mengubah kuota kelas (admin)
+// @Description Optimistic locking: kirim version yang terakhir dilihat. Membutuhkan permission course:manage.
+// @Tags        courses
+// @Accept      json
+// @Produce     json
+// @Param       id   path int                      true "ID kelas"
+// @Param       body body model.UpdateQuotaRequest true "Kuota baru dan version"
+// @Success     200  {object} model.WebResponse{data=model.Course}
+// @Failure     403  {object} model.ErrorResponse
+// @Failure     409  {object} model.ErrorResponse "VERSION_CONFLICT atau QUOTA_BELOW_ENROLLED"
+// @Security    BearerAuth
+// @Router      /courses/{id} [patch]
 func (s *CourseService) UpdateQuota(c *fiber.Ctx) error {
 	ctx, cancel := helper.RequestContext(c)
 	defer cancel()
@@ -285,31 +370,30 @@ func (s *CourseService) UpdateQuota(c *fiber.Ctx) error {
 
 	var req model.UpdateQuotaRequest
 	if err := c.BodyParser(&req); err != nil {
-		return helper.BadRequest("body harus berupa JSON yang valid")
+		return helper.BadRequest("body bukan JSON yang valid")
 	}
-	if req.Quota < 1 || req.Quota > 500 {
-		return helper.BadRequest("quota harus antara 1 dan 500")
-	}
-	if req.Version < 1 {
-		return helper.BadRequest("version harus berupa angka positif")
+	if errs := helper.Validate(req); len(errs) > 0 {
+		return helper.ValidationError(errs)
 	}
 
 	var updated model.Course
-	// Tugas D.2: Update kuota dan pencatatan outbox disatukan di dalam transaksi WithTx
 	err := s.tx.WithTx(ctx, func(tx repository.DBTX) error {
 		repo := s.courses.WithTx(tx)
-		var err error
-		updated, err = repo.UpdateQuota(ctx, id, req.Quota, req.Version)
+
+		c, err := repo.UpdateQuota(ctx, id, req.Quota, req.Version)
 		if err != nil {
 			return err
 		}
+		updated = c
 
-		return s.outbox.WithTx(tx).Insert(ctx, model.EventCourseQuotaChanged, model.CourseQuotaChangedEvent{
-			CourseID:   updated.ID,
-			CourseCode: updated.Code,
-			CourseName: updated.Name,
-			NewQuota:   updated.Quota,
-		})
+		payload := model.CourseQuotaChangedEvent{
+			CourseID:   c.ID,
+			CourseCode: c.Code,
+			CourseName: c.Name,
+			NewQuota:   req.Quota,
+		}
+
+		return s.outbox.WithTx(tx).Insert(ctx, model.EventCourseQuotaChanged, payload)
 	})
 	if err != nil {
 		return translateCourseError(err)
@@ -323,20 +407,17 @@ func translateCourseError(err error) error {
 	case errors.Is(err, repository.ErrNotFound):
 		return helper.NotFound("kelas tidak ditemukan")
 	case errors.Is(err, repository.ErrCourseFull):
-		return helper.NewError(fiber.StatusConflict, "COURSE_FULL", "kuota kelas sudah penuh")
+		return helper.NewAppError(fiber.StatusConflict, "COURSE_FULL", "kuota kelas sudah penuh")
 	case errors.Is(err, repository.ErrAlreadyEnrolled):
-		return helper.NewError(fiber.StatusConflict, "ALREADY_ENROLLED", "Anda sudah terdaftar di kelas ini")
+		return helper.NewAppError(fiber.StatusConflict, "ALREADY_ENROLLED", "sudah terdaftar di kelas ini")
 	case errors.Is(err, repository.ErrNotEnrolled):
-		return helper.NewError(fiber.StatusConflict, "NOT_ENROLLED", "Anda tidak terdaftar di kelas tersebut")
+		return helper.NewAppError(fiber.StatusConflict, "NOT_ENROLLED", "tidak terdaftar di kelas ini")
 	case errors.Is(err, errCreditLimit):
-		return helper.NewError(fiber.StatusConflict, "CREDIT_LIMIT_EXCEEDED",
-			"batas "+strconv.Itoa(MaxCreditsPerSemester)+" SKS terlampaui")
+		return helper.NewAppError(fiber.StatusConflict, "CREDIT_LIMIT_EXCEEDED", "batas 24 SKS terlampaui")
 	case errors.Is(err, repository.ErrVersionConflict):
-		return helper.NewError(fiber.StatusConflict, "VERSION_CONFLICT",
-			"data kelas sudah diubah pihak lain, muat ulang lalu coba lagi")
+		return helper.NewAppError(fiber.StatusConflict, "VERSION_CONFLICT", "data kelas sudah diubah pihak lain")
 	case errors.Is(err, repository.ErrQuotaBelowFilled):
-		return helper.NewError(fiber.StatusConflict, "QUOTA_BELOW_ENROLLED",
-			"kuota tidak boleh lebih kecil dari jumlah peserta saat ini")
+		return helper.NewAppError(fiber.StatusConflict, "QUOTA_BELOW_ENROLLED", "kuota tidak boleh lebih kecil dari jumlah peserta saat ini")
 	default:
 		return helper.Internal(err)
 	}
