@@ -1,0 +1,15 @@
+.git
+.github
+.vscode
+.gemini
+.idea
+*.log
+*.exe
+logs/
+coverage.out
+evidence/
+report/
+tmp/
+.env
+.env.*
+!.env.example
