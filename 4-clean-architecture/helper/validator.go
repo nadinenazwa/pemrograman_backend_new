@@ -185,3 +185,8 @@ func ValidateStruct(s interface{}) map[string]string {
 	}
 	return errs
 }
+
+// Validate memvalidasi struct dan mengembalikan map field→pesan error (alias untuk ValidateStruct).
+func Validate(s interface{}) map[string]string {
+	return ValidateStruct(s)
+}
