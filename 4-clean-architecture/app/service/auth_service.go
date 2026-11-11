@@ -35,7 +35,19 @@ func NewAuthService(
 	}
 }
 
-// Register mendaftarkan user baru.
+// Register godoc
+//
+// @Summary      Mendaftarkan akun baru
+// @Description  Role akun baru selalu "user". Password minimal 8 karakter dan memuat huruf serta angka.
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        body body     model.RegisterRequest true "Data akun baru"
+// @Success      201  {object} model.WebResponse{data=model.User}
+// @Failure      400  {object} model.ErrorResponse "Body bukan JSON yang valid"
+// @Failure      409  {object} model.ErrorResponse "Username sudah dipakai"
+// @Failure      422  {object} model.ErrorResponse "Validasi gagal; detail per field ada di fields"
+// @Router       /auth/register [post]
 func (s *AuthService) Register(c *fiber.Ctx) error {
 	ctx, cancel := helper.ReqCtx(c)
 	defer cancel()
@@ -74,7 +86,18 @@ func (s *AuthService) Register(c *fiber.Ctx) error {
 	return helper.Created(c, "Registrasi berhasil", user, "/api/v1/auth/me")
 }
 
-// Login mengautentikasi user dan mengembalikan token pair.
+// Login godoc
+//
+// @Summary      Login dan mendapatkan pasangan token
+// @Description  Dibatasi 5 kali gagal per menit per IP.
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        body body     model.LoginRequest true "Username dan password"
+// @Success      200  {object} model.WebResponse{data=model.TokenPair}
+// @Failure      401  {object} model.ErrorResponse "Username atau password salah"
+// @Failure      429  {object} model.ErrorResponse "Terlalu banyak percobaan login"
+// @Router       /auth/login [post]
 func (s *AuthService) Login(c *fiber.Ctx) error {
 	ctx, cancel := helper.ReqCtx(c)
 	defer cancel()
@@ -93,7 +116,6 @@ func (s *AuthService) Login(c *fiber.Ctx) error {
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			// Dummy bcrypt verification untuk mencegah user enumeration
-			// Timing respons tetap serupa dengan kasus password salah
 			_ = helper.VerifyPassword("$2a$12$dummyhashvaluefortimingattak000000000000000000000", req.Password)
 			return helper.Fail(c, fiber.StatusUnauthorized, "Username atau password salah")
 		}
@@ -119,7 +141,17 @@ func (s *AuthService) Login(c *fiber.Ctx) error {
 	return helper.Success(c, fiber.StatusOK, "Login berhasil", tokenPair)
 }
 
-// Refresh menghasilkan token pair baru dengan refresh token rotation.
+// Refresh godoc
+//
+// @Summary      Menukar refresh token dengan pasangan token baru
+// @Description  Refresh token lama langsung dicabut (rotation).
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        body body     model.RefreshRequest true "Refresh token"
+// @Success      200  {object} model.WebResponse{data=model.TokenPair}
+// @Failure      401  {object} model.ErrorResponse "Refresh token tidak valid, kedaluwarsa, atau sudah dicabut"
+// @Router       /auth/refresh [post]
 func (s *AuthService) Refresh(c *fiber.Ctx) error {
 	ctx, cancel := helper.ReqCtx(c)
 	defer cancel()
@@ -173,7 +205,17 @@ func (s *AuthService) Refresh(c *fiber.Ctx) error {
 	return helper.Success(c, fiber.StatusOK, "Token berhasil diperbarui", tokenPair)
 }
 
-// Logout mencabut refresh token.
+// Logout godoc
+//
+// @Summary      Logout pengguna
+// @Description  Mencabut refresh token pengguna sehingga tidak dapat digunakan kembali.
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        body body     model.LogoutRequest true "Refresh token yang akan dicabut"
+// @Success      200  {object} model.WebResponse{data=string}
+// @Failure      400  {object} model.ErrorResponse "Body bukan JSON yang valid atau token kosong"
+// @Router       /auth/logout [post]
 func (s *AuthService) Logout(c *fiber.Ctx) error {
 	ctx, cancel := helper.ReqCtx(c)
 	defer cancel()
@@ -191,10 +233,20 @@ func (s *AuthService) Logout(c *fiber.Ctx) error {
 	tokenHash := helper.HashToken(req.RefreshToken)
 	_ = s.refreshRepo.RevokeByTokenHash(ctx, tokenHash)
 
-	return helper.Success(c, fiber.StatusOK, "Logout berhasil", nil)
+	return helper.Success(c, fiber.StatusOK, "Logout berhasil", "ok")
 }
 
-// Me mengembalikan informasi user yang sedang terautentikasi beserta permissions.
+// Me godoc
+//
+// @Summary      Mendapatkan profil pengguna yang sedang login
+// @Description  Mengembalikan informasi akun dan daftar permission pengguna.
+// @Tags         auth
+// @Produce      json
+// @Success      200  {object} model.WebResponse{data=model.UserProfile}
+// @Failure      401  {object} model.ErrorResponse "Belum terautentikasi"
+// @Failure      404  {object} model.ErrorResponse "User tidak ditemukan"
+// @Security     BearerAuth
+// @Router       /auth/me [get]
 func (s *AuthService) Me(c *fiber.Ctx) error {
 	ctx, cancel := helper.ReqCtx(c)
 	defer cancel()
@@ -204,21 +256,24 @@ func (s *AuthService) Me(c *fiber.Ctx) error {
 		return helper.Fail(c, fiber.StatusUnauthorized, "Tidak terautentikasi")
 	}
 
-	user, err := s.userRepo.FindByID(ctx, authUser.ID)
+	userID := authUser.ID
+	if userID == 0 {
+		userID = authUser.UserID
+	}
+
+	user, err := s.userRepo.FindByID(ctx, userID)
 	if err != nil {
 		return helper.Fail(c, fiber.StatusNotFound, "User tidak ditemukan")
 	}
 
-	// Permissions untuk membantu frontend mengetahui tombol yang relevan.
-	// BUKAN sebagai security check — security tetap di backend middleware/service.
 	userPerms := s.perms.PermissionsFor(user.Role)
 	if userPerms == nil {
 		userPerms = []string{}
 	}
 
-	return helper.Success(c, fiber.StatusOK, "Data user berhasil diambil", fiber.Map{
-		"user":        user,
-		"permissions": userPerms,
+	return helper.Success(c, fiber.StatusOK, "Data user berhasil diambil", model.UserProfile{
+		User:        user,
+		Permissions: userPerms,
 	})
 }
 

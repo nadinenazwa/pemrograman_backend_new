@@ -14,13 +14,25 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 
+	_ "api-students-db/docs"
+
 	"api-students-db/app/repository"
 	"api-students-db/app/service"
 	"api-students-db/config"
 	"api-students-db/database"
 	"api-students-db/helper"
+	"api-students-db/route"
 )
 
+// @title API KRS Praktikum Backend Lanjut
+// @version 1.0
+// @description API pendaftaran kelas (KRS), ulasan kelas, dan notifikasi.
+// @description Seluruh endpoint selain /auth memerlukan access token.
+// @BasePath /api/v1
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description Isi dengan: Bearer <access_token>
 func main() {
 	_ = godotenv.Load()
 	logger := config.NewLogger()
@@ -121,6 +133,12 @@ func startAPI(logger *slog.Logger, pool *pgxpool.Pool) (*fiber.App, *asynq.Inspe
 		return nil, nil
 	}
 
+	reviewRepo, err := repository.NewReviewMongoRepository(context.Background(), mongoDB)
+	if err != nil {
+		logger.Error("gagal menginisialisasi review repository", slog.String("error", err.Error()))
+		return nil, nil
+	}
+
 	inspector := asynq.NewInspector(config.RedisOpt())
 
 	studentService := service.NewStudentService(studentRepo, perms)
@@ -129,13 +147,23 @@ func startAPI(logger *slog.Logger, pool *pgxpool.Pool) (*fiber.App, *asynq.Inspe
 	portfolioService := service.NewPortfolioService(portfolioRepo, studentRepo, perms)
 	courseService := service.NewCourseService(courseRepo, outboxRepo, txManager)
 	notificationService := service.NewNotificationService(notificationRepo, outboxRepo, inspector)
+	reviewService := service.NewReviewService(reviewRepo, courseRepo, perms)
+	userService := service.NewUserService(userRepo, perms)
 
-	app := config.NewApp(
-		logger, pool,
-		studentService, achievementService, authService, portfolioService,
-		courseService, notificationService,
-		jwtManager, perms,
-	)
+	app := config.NewApp(logger, route.Dependencies{
+		Pool:                pool,
+		StudentService:      studentService,
+		AchievementService:  achievementService,
+		AuthService:         authService,
+		PortfolioService:    portfolioService,
+		CourseService:       courseService,
+		NotificationService: notificationService,
+		ReviewService:       reviewService,
+		UserService:         userService,
+		JWT:                 jwtManager,
+		Permissions:         perms,
+		EnableSwagger:       config.GetEnv("SWAGGER_ENABLED", "false") == "true",
+	})
 
 	port := config.GetEnv("APP_PORT", "3000")
 	go func() {

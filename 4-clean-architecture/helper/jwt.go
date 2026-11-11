@@ -56,6 +56,16 @@ func NewJWTManager() (*JWTManager, error) {
 }
 
 // GenerateAccessToken membuat JWT access token dengan claim yang sesuai modul.
+
+// NewTestJWTManager membuat JWTManager untuk pengujian tanpa bergantung pada environment variable.
+func NewTestJWTManager(secret, issuer string, accessTTL time.Duration) *JWTManager {
+	return &JWTManager{
+		secret:    []byte(secret),
+		issuer:    issuer,
+		accessTTL: accessTTL,
+	}
+}
+
 func (m *JWTManager) GenerateAccessToken(userID int, username, role string) (string, error) {
 	now := time.Now()
 	claims := jwt.MapClaims{

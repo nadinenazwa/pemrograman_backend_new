@@ -48,6 +48,12 @@ func (ps *PermissionSet) Can(role, permission string) bool {
 	return perms[permission]
 }
 
+// Has adalah alias untuk Can.
+func (ps *PermissionSet) Has(role, permission string) bool {
+	return ps.Can(role, permission)
+}
+
+
 // KnownRoles mengembalikan daftar role yang diketahui, terurut.
 func (ps *PermissionSet) KnownRoles() []string {
 	if ps == nil {
