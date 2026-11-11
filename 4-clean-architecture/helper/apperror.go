@@ -19,6 +19,7 @@ const (
 	CodeNotAcceptable      = "NOT_ACCEPTABLE"
 	CodeTooManyRequests    = "TOO_MANY_REQUESTS"
 	CodeInternalError      = "INTERNAL_ERROR"
+	CodeInternal           = "INTERNAL_ERROR"
 )
 
 // AppError adalah error terstruktur yang digunakan oleh seluruh handler/service.
@@ -75,6 +76,18 @@ func NotFound(msg string) *AppError {
 
 func Unauthorized(msg string) *AppError {
 	return NewAppError(fiber.StatusUnauthorized, CodeUnauthorized, msg)
+}
+
+func Forbidden(msg string) *AppError {
+	return NewAppError(fiber.StatusForbidden, CodeForbidden, msg)
+}
+
+func Conflict(msg string) *AppError {
+	return NewAppError(fiber.StatusConflict, CodeConflict, msg)
+}
+
+func ValidationError(fields map[string]string) *AppError {
+	return NewValidationError(fields)
 }
 
 func Validation(fields map[string]string) *AppError {
